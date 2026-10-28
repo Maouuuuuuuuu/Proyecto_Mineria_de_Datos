@@ -64,7 +64,7 @@ To run a demo, open its notebook in Jupyter or VS Code, select your Python envir
 
 ## Running the project
 
-The repository includes the evaluation notebooks and their saved demo results. The final `forecast_report.py` script will be added separately; the report-generation instructions below describe the local workflow.
+The main script, [forecast_report.py](forecast_report.py), runs the analyses and generates the HTML report. The evaluation notebooks and their saved demo results are available in [Demos/](Demos/).
 
 Use a Python environment with the required packages and install **Microsoft ODBC Driver 18 for SQL Server** on the computer running the script.
 
