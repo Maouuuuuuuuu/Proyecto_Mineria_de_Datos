@@ -56,13 +56,15 @@ Example: **Sudeste / papelaria** (stationery), measured in units. This illustrat
 
 The evaluation notebooks contain the model configurations and comparisons:
 
-- `Demos/Global walkforward.ipynb`
-- `Demos/Regional walkforward.ipynb`
-- `Demos/Region category walkforward.ipynb` — evaluated 347 combinations; results are inspected by combination.
+- [Global sales](Demos/Global%20walkforward.ipynb)
+- [Regional sales](Demos/Regional%20walkforward.ipynb)
+- [Units by region and category](Demos/Region%20category%20walkforward.ipynb) — evaluated 347 combinations; results are inspected by combination.
+
+To run a demo, open its notebook in Jupyter or VS Code, select your Python environment, configure the SQL connection, and run the cells in order. Saved tables and plots can be viewed on GitHub without rerunning training. The demos additionally require `matplotlib`, `statsmodels`, and a Jupyter-compatible environment.
 
 ## Running the project
 
-This initial upload contains the README and demo images. The Python code and notebooks will be added separately; the instructions below describe the local workflow.
+The repository includes the evaluation notebooks and their saved demo results. The final `forecast_report.py` script will be added separately; the report-generation instructions below describe the local workflow.
 
 Use a Python environment with the required packages and install **Microsoft ODBC Driver 18 for SQL Server** on the computer running the script.
 
