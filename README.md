@@ -62,6 +62,12 @@ The evaluation notebooks contain the model configurations and comparisons:
 
 To run a demo, open its notebook in Jupyter or VS Code, select your Python environment, configure the SQL connection, and run the cells in order. Saved tables and plots can be viewed on GitHub without rerunning training. The demos additionally require `matplotlib`, `statsmodels`, and a Jupyter-compatible environment.
 
+## SQL data preparation
+
+[Proyecto Machine Learning.sql](sql/Proyecto%20Machine%20Learning.sql) contains the supplied SQL Server script for preparing the silver tables and `gold.dim_demand`, including region assignments.
+
+It assumes the bronze source tables have already been imported. The file is preserved as provided and should be reviewed and run in appropriate batches; it is not a one-click installer. In particular, it defines the gold primary key twice, so the duplicate `ALTER TABLE ... ADD CONSTRAINT PK_dim_demand` must be omitted when using the original `CREATE TABLE` definition.
+
 ## Running the project
 
 The main script, [forecast_report.py](forecast_report.py), runs the analyses and generates the HTML report. The evaluation notebooks and their saved demo results are available in [Demos/](Demos/).
