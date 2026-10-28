@@ -62,6 +62,16 @@ The evaluation notebooks contain the model configurations and comparisons:
 
 To run a demo, open its notebook in Jupyter or VS Code, select your Python environment, configure the SQL connection, and run the cells in order. Saved tables and plots can be viewed on GitHub without rerunning training. The demos additionally require `matplotlib`, `statsmodels`, and a Jupyter-compatible environment.
 
+## Prophet uncertainty
+
+The report includes a separate uncertainty panel for Prophet. At each walk-forward round, Prophet is fitted once and generates **1,000 simulated outcomes per forecast week**, using estimated trend uncertainty and observation noise. The **10th and 90th percentiles** define the nominal **80% prediction interval**. These simulations add uncertainty information without changing the central forecast; they are not additional training runs.
+
+![Global sales: Prophet forecast, actual sales, and the shaded 80% prediction interval](images/Prophet%20uncertainty.png)
+
+In this global example, actual sales fell inside the interval in **34 of 50 weeks (68%)**, below the nominal 80%. The average interval width was **R$78,840.52**. This suggests Prophet underestimated uncertainty during the evaluation period: a narrower band does not necessarily mean a more accurate forecast.
+
+Coverage and average width are calculated separately for each selected region/category. Weeks with no estimated interval, including constant-history fallbacks, are excluded from interval coverage and identified in the report. The band describes possible actual values, not a guarantee of future accuracy.
+
 ## SQL data preparation
 
 [Proyecto Machine Learning.sql](sql/Proyecto%20Machine%20Learning.sql) contains the supplied SQL Server script for preparing the silver tables and `gold.dim_demand`, including region assignments.
