@@ -16,6 +16,8 @@ HORIZON_WEEKS = 2
 FUTURE_WEEKS = 4
 EXCLUDE_LAST_WEEK = True
 WORKERS = 4
+INTERVAL_WIDTH = 0.80
+UNCERTAINTY_SAMPLES = 1000
 BASE_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = BASE_DIR / 'forecast_results'
 REPORT_FILE = BASE_DIR / 'reports' / 'rf_prophet_report.html'
@@ -150,22 +152,38 @@ def forecast_prophet(train, future_dates):
     future = month_inputs(future_dates).reset_index(names='ds')
     model = Prophet(yearly_seasonality=False, weekly_seasonality=False,
                     daily_seasonality=False, changepoint_prior_scale=0.05,
-                    uncertainty_samples=0)
+                    uncertainty_samples=UNCERTAINTY_SAMPLES, interval_width=INTERVAL_WIDTH)
     for column in ['month_sin', 'month_cos']:
         model.add_regressor(column, standardize=False, prior_scale=1.0)
     model.fit(training, seed=42)
-    return model.predict(future)['yhat'].to_numpy() * scale
+    previous_state = np.random.get_state()
+    try:
+        np.random.seed(42)
+        forecast = model.predict(future)
+    finally:
+        np.random.set_state(previous_state)
+    return forecast[['yhat', 'yhat_lower', 'yhat_upper']].to_numpy() * scale
 
 
 def predict_checked(model, train, dates):
     """Constant history is explicit; failures stay missing, never replaced by zero."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
+        bounds = {'lower': [None] * len(dates), 'upper': [None] * len(dates)}
         try:
             constant = train.nunique() == 1
             values = (np.repeat(float(train.iloc[-1]), len(dates)) if constant else
                       (forecast_rf if model == 'RF' else forecast_prophet)(train, dates))
             values = np.asarray(values, dtype=float)
+            if model == 'Prophet' and not constant:
+                if values.shape != (len(dates), 3):
+                    raise ValueError('Invalid interval shape')
+                lower, upper = values[:, 1], values[:, 2]
+                if not np.isfinite(values).all() or (lower > upper).any():
+                    raise ValueError('Invalid interval bounds')
+                bounds = {'lower': np.maximum(lower, 0).tolist(),
+                          'upper': np.maximum(upper, 0).tolist()}
+                values = values[:, 0]
             if values.shape != (len(dates),) or not np.isfinite(values).all():
                 raise ValueError('Invalid predictions')
             values = np.maximum(values, 0).tolist()
@@ -173,8 +191,9 @@ def predict_checked(model, train, dates):
             message = 'Constant training history; constant forecast, no model fitted.' if constant else ''
         except Exception as exc:
             values, status, message, constant = [None] * len(dates), 'failed', str(exc), False
+            bounds = {'lower': [None] * len(dates), 'upper': [None] * len(dates)}
         messages = list(dict.fromkeys(str(w.message) for w in caught))
-    return values, status, ' | '.join([message] + messages).strip(' |'), constant
+    return values, status, ' | '.join([message] + messages).strip(' |'), constant, bounds
 
 
 def evaluate_group(job):
@@ -196,7 +215,7 @@ def evaluate_group(job):
     for fold, stop in enumerate(range(initial, len(sales), horizon), 1):
         train, test = sales.iloc[:stop], sales.iloc[stop:stop+horizon]
         for model in values_by_model:
-            values, status, message, constant = predict_checked(model, train, test.index)
+            values, status, message, constant, bounds = predict_checked(model, train, test.index)
             constant_rounds[model] += int(constant)
             values_by_model[model].extend(values)
             if message:
@@ -208,7 +227,8 @@ def evaluate_group(job):
                     'train_end': summary['train_end'], 'forecast_origin': train.index[-1].date().isoformat(),
                     'test_weeks': summary['test_weeks'], 'fold': fold, 'horizon_week': step,
                     'week_start': week.date().isoformat(), f'actual_{target}': float(actual),
-                    f'predicted_{target}': value, 'status': status})
+                    f'predicted_{target}': value, 'status': status,
+                    'lower': bounds['lower'][step-1], 'upper': bounds['upper'][step-1]})
     matrix = np.array(list(values_by_model.values()), dtype=float)
     common = np.isfinite(matrix).all(axis=0)
     actual = sales.iloc[initial:].to_numpy()[common]
@@ -223,7 +243,7 @@ def evaluate_group(job):
             'status': 'ok' if len(error) else 'failed', 'message': ''})
     future_dates = pd.date_range(sales.index[-1]+pd.Timedelta(weeks=1), periods=future_weeks, freq='W-MON')
     for model in values_by_model:
-        values, status, message, constant = predict_checked(model, sales, future_dates)
+        values, status, message, constant, bounds = predict_checked(model, sales, future_dates)
         if message:
             result['diagnostics'].append({**base, 'model': model, 'phase': 'future', 'status': status, 'message': message})
         for step, (week, value) in enumerate(zip(future_dates, values), 1):
@@ -231,7 +251,8 @@ def evaluate_group(job):
                 'train_start': group['dates'][0], 'train_end': group['dates'][-1], 'train_weeks': len(sales),
                 'source_last_week': group['source_last_week'], 'forecast_weeks': future_weeks,
                 'horizon_week': step, 'week_start': week.date().isoformat(), f'predicted_{target}': value,
-                'status': status, 'message': message})
+                'status': status, 'message': message,
+                'lower': bounds['lower'][step-1], 'upper': bounds['upper'][step-1]})
     return result
 
 
@@ -299,6 +320,8 @@ def main():
             parser.error(f'No saved results at {saved}. Run training first.')
         build_report(json.loads(saved.read_text(encoding='utf-8')), output)
         return
+    if not 0 < INTERVAL_WIDTH < 1 or UNCERTAINTY_SAMPLES < 100:
+        parser.error('Use an interval width between 0 and 1 and at least 100 samples.')
     initialize_models()
     groups = read_groups()
     if args.sample:
@@ -308,6 +331,7 @@ def main():
     import importlib.metadata
     settings = {'initial': INITIAL_TRAIN_WEEKS, 'horizon': HORIZON_WEEKS, 'future': FUTURE_WEEKS,
                 'exclude_last_week': EXCLUDE_LAST_WEEK,
+                'interval_width': INTERVAL_WIDTH, 'uncertainty_samples': UNCERTAINTY_SAMPLES,
                 'packages': {p: importlib.metadata.version(p) for p in ['numpy','pandas','scikit-learn','prophet']},
                 'model_code': hashlib.sha256(''.join(inspect.getsource(f) for f in
                     [forecast_rf, month_inputs, forecast_prophet, predict_checked, evaluate_group]).encode()).hexdigest()}
@@ -390,7 +414,8 @@ body{font-size:14px;background:var(--bg)}.shell{max-width:1240px;padding:32px 28
 <div class="cards" aria-live="polite"><div class="card"><div class="eyebrow">Lowest average error</div><div class="big" id="bestModel">—</div><p id="bestDetail"></p></div><div class="card"><div class="eyebrow" id="totalLabel">Actual sales</div><div class="big" id="actualTotal">—</div><p id="actualDetail"></p></div><div class="card"><div class="eyebrow">Evaluation window</div><div class="big" id="periodLabel">—</div><p id="periodDetail"></p></div></div>
 <div class="grid"><section class="panel"><div class="panel-top"><div><h3>Forecast error</h3><p class="sub">Lower is better</p></div><label aria-label="Error metric"><select id="metricSelect"><option value="mae">MAE</option><option value="rmse">RMSE</option><option value="wape">WAPE</option></select></label></div><div class="chart" id="metricChart"></div><p class="sub" id="metricHelp"></p></section>
 <section class="panel"><h3>Model comparison</h3><p class="sub"></p><div class="table-wrap" id="scoreTable"></div><div class="note" id="scoreNote"></div><details id="diagnostics"><summary>Fit diagnostics</summary><pre id="diagnosticText"></pre></details></section></div>
-<section class="panel"><h3>Actual vs predicted</h3><p class="sub" id="evaluationCaption"></p><div class="legend" id="evaluationLegend"></div><div class="chart" id="evaluationChart"></div><details><summary>View weekly evaluation values</summary><div class="table-wrap" id="evaluationTable"></div></details></section>
+<section class="panel"><h3>Actual vs predicted</h3><p class="sub" id="evaluationCaption"></p><div class="legend" id="evaluationLegend"></div><div class="chart" id="evaluationChart"></div></section>
+<section class="panel"><h3>Prophet uncertainty</h3><p class="sub" id="uncertaintyCaption"></p><div class="legend" id="uncertaintyLegend"></div><div class="chart" id="uncertaintyChart"></div><p class="sub" id="uncertaintySummary" aria-live="polite"></p></section>
 <div class="section-head section-divider"><div><h2>Next 4 weeks</h2><p class="sub"></p></div><label id="futureField">FUTURE FORECAST RUN<select id="futureSelect"></select></label></div>
 <div id="futureNotice"></div><section class="panel"><p class="selected-name" id="futureCaption"></p><div class="legend" id="futureLegend"></div><div class="chart" id="futureChart"></div><div class="table-wrap" id="futureTable"></div><details id="futureDiagnostics"><summary>Future fit diagnostics</summary><pre id="futureDiagnosticText"></pre></details></section>
 </div>
@@ -441,13 +466,14 @@ function barChart(rows){
  const max=Math.max(...data.map(r=>r[field]),1);
  $('metricChart').innerHTML=data.map((r,i)=>`<div class="metric-row"><div class="metric-line"><span><i class="dot" style="background:${colors[r.model]}"></i>${esc(r.model)}${Math.abs(r[field]-data[0][field])<1e-8*Math.max(1,Math.abs(data[0][field]))?'<small class="best-tag">Lowest error</small>':''}</span><strong>${field==='wape_pct'?num(r[field])+'%':amount(r[field])}</strong></div><div class="track"><div style="width:${100*r[field]/max}%;background:${colors[r.model]}"></div></div></div>`).join('');
 }
-function lineChart(id,dates,series,future=false){
- const vals=series.flatMap(s=>s.values.filter(finite));if(!dates.length||!vals.length){empty(id,'No valid predictions available for this selection.');return}
+function lineChart(id,dates,series,future=false,band=null){
+ const vals=series.flatMap(s=>s.values.filter(finite)).concat(band?[...band.lower,...band.upper].filter(finite):[]);if(!dates.length||!vals.length){empty(id,'No valid predictions available for this selection.');return}
  const W=1150,H=300,L=78,R=28,T=20,B=45,max=Math.max(...vals,1)*1.12;
  const x=i=>L+(dates.length===1?(W-L-R)/2:(W-L-R)*i/(dates.length-1));const y=v=>H-B-(H-T-B)*v/max;
  let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${future?'Future forecasts':'Actual and predicted values'} by week">`;
  for(let i=0;i<=4;i++){const val=max*i/4,yy=y(val);svg+=`<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="#293242"/><text x="${L-10}" y="${yy+4}" text-anchor="end" font-size="11" fill="#9aa8bd">${esc(val.toLocaleString('en-US',{notation:'compact',maximumFractionDigits:1}))}</text>`}
  const stride=Math.max(1,Math.ceil(dates.length/9));dates.forEach((d,i)=>{if((i%stride===0&&i<dates.length-1-Math.floor(stride/2))||i===dates.length-1)svg+=`<text x="${x(i)}" y="${H-16}" text-anchor="middle" font-size="11" fill="#9aa8bd">${esc(shortDate(d))}</text>`});
+ if(band){let segment=[];const draw=()=>{if(!segment.length)return;const upper=segment.map(i=>`${x(i)},${y(band.upper[i])}`),lower=[...segment].reverse().map(i=>`${x(i)},${y(band.lower[i])}`);if(segment.length===1){const i=segment[0];svg+=`<rect x="${x(i)-3}" y="${y(band.upper[i])}" width="6" height="${Math.max(1,y(band.lower[i])-y(band.upper[i]))}" fill="#e5ad68" opacity="0.23"/>`}else svg+=`<polygon points="${[...upper,...lower].join(' ')}" fill="#e5ad68" opacity="0.23"/>`;segment=[]};dates.forEach((d,i)=>{if(finite(band.lower[i])&&finite(band.upper[i]))segment.push(i);else draw()});draw()}
  series.forEach(s=>{let path='',started=false;s.values.forEach((v,i)=>{if(!finite(v)){started=false;return}path+=(started?' L':' M')+x(i)+','+y(v);started=true});svg+=`<path d="${path}" fill="none" stroke="${colors[s.name]||'#777'}" stroke-width="${s.name==='Actual'?3.4:2.2}" ${future?'stroke-dasharray="7 4"':''}/>`;
  s.values.forEach((v,i)=>{if(finite(v))svg+=`<circle cx="${x(i)}" cy="${y(v)}" r="${dates.length>30?2.5:4}" fill="${colors[s.name]||'#777'}" stroke="#171d28" stroke-width="1"><title>${esc(s.name)} · ${esc(date(dates[i]))}: ${esc(amount(v))}</title></circle>`})});
  $(id).innerHTML=svg+'</svg>';
@@ -456,7 +482,7 @@ function valuesTable(id,dates,series){if(!dates.length){empty(id,'No weekly valu
 function renderEvaluation(){
  const rows=groupRows(bundle().metrics).filter(r=>evalKey(r)===$('evaluationSelect').value), ref=rows[0];
  $('totalLabel').textContent=isUnits()?'Total test units':'Total test sales';
- if(!ref){['bestModel','actualTotal','periodLabel'].forEach(id=>$(id).textContent='—');['bestDetail','actualDetail','periodDetail','evaluationCaption','scoreNote'].forEach(id=>$(id).textContent='');['metricChart','scoreTable','evaluationChart','evaluationTable'].forEach(id=>empty(id,'No evaluation data found.'));$('evaluationLegend').innerHTML='';$('diagnostics').classList.add('hidden');note('evaluationNotice','');return}
+ if(!ref){renderUncertainty([],[],isUnits()?'actual_units':'actual_sales',isUnits()?'predicted_units':'predicted_sales');['bestModel','actualTotal','periodLabel'].forEach(id=>$(id).textContent='—');['bestDetail','actualDetail','periodDetail','evaluationCaption','scoreNote'].forEach(id=>$(id).textContent='');['metricChart','scoreTable','evaluationChart'].forEach(id=>empty(id,'No evaluation data found.'));$('evaluationLegend').innerHTML='';$('diagnostics').classList.add('hidden');note('evaluationNotice','');return}
  const mf=isUnits()?'mae_units':'mae_brl',rf=isUnits()?'rmse_units':'rmse_brl',tf=isUnits()?'actual_units_total':'actual_sales_total';
  const valid=rows.filter(r=>r.status==='ok'&&finite(r[mf])).sort((a,b)=>a[mf]-b[mf]);
  const winner=valid[0],ties=winner?valid.filter(r=>Math.abs(r[mf]-winner[mf])<=1e-8*Math.max(1,Math.abs(winner[mf]))):[];
@@ -478,7 +504,24 @@ function renderEvaluation(){
  const dates=unique(pred.map(r=>r.week_start)),af=isUnits()?'actual_units':'actual_sales',pf=isUnits()?'predicted_units':'predicted_sales';
  const series=[{name:'Actual',values:dates.map(d=>pred.find(r=>r.week_start===d)?.[af]??null)},...unique(pred.map(r=>r.model)).map(name=>({name,values:dates.map(d=>pred.find(r=>r.week_start===d&&r.model===name)?.[pf]??null)}))];
  $('evaluationCaption').textContent=`${date(ref.test_start)} – ${date(ref.test_end)} · ${ref.horizon_weeks}-week walk-forward · ${isUnits()?'Units':'BRL'}`;
- legend('evaluationLegend',series.map(s=>s.name));lineChart('evaluationChart',dates,series);valuesTable('evaluationTable',dates,series);
+ renderUncertainty(pred,dates,af,pf);
+ legend('evaluationLegend',series.map(s=>s.name));lineChart('evaluationChart',dates,series);
+}
+function renderUncertainty(pred,dates,af,pf){
+ const rows=pred.filter(r=>r.model==='Prophet'), lookup=new Map(rows.map(r=>[r.week_start,r]));
+ const valid=rows.filter(r=>finite(r.lower)&&finite(r.upper)&&finite(r[af]));
+ const level=DATA.settings.interval_width;
+ $('uncertaintyLegend').innerHTML='';$('uncertaintySummary').textContent='';
+ $('uncertaintyCaption').textContent='Historical walk-forward forecasts · '+(isUnits()?'Units':'BRL');
+ if(!valid.length||!finite(level)){empty('uncertaintyChart','No estimated intervals for this selection. Older results need a training run; constant-history forecasts have no fitted Prophet interval.');return}
+ const lower=dates.map(d=>lookup.get(d)?.lower??null),upper=dates.map(d=>lookup.get(d)?.upper??null);
+ const series=[{name:'Actual',values:dates.map(d=>lookup.get(d)?.[af]??null)},{name:'Prophet',values:dates.map(d=>lookup.get(d)?.[pf]??null)}];
+ legend('uncertaintyLegend',['Actual','Prophet']);$('uncertaintyLegend').innerHTML+=`<span><i class="dot" style="background:#e5ad68;opacity:.5"></i>${num(level*100)}% prediction interval</span>`;
+ lineChart('uncertaintyChart',dates,series,false,{lower,upper});
+ const hits=valid.filter(r=>r[af]>=r.lower&&r[af]<=r.upper).length,coverage=100*hits/valid.length;
+ const width=valid.reduce((sum,r)=>sum+r.upper-r.lower,0)/valid.length;
+ const interpretation=coverage<level*100?'Observed coverage was below the nominal level, suggesting underestimated uncertainty in this evaluation.':'Observed coverage met or exceeded the nominal level; this does not guarantee future coverage.';
+ $('uncertaintySummary').textContent=`The nominal ${num(level*100)}% interval contained actual values in ${hits} of ${valid.length} scored weeks (${num(coverage)}%). Average band width: ${amount(width)}. ${interpretation}`+(valid.length<rows.length?` Bounds unavailable for ${rows.length-valid.length} weeks (constant-history fallback or failed fit); those weeks are excluded from interval coverage.`:'');
 }
 function renderFuture(){
  const rows=groupRows(bundle().future).filter(r=>futureKey(r)===$('futureSelect').value),ref=rows[0];
