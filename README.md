@@ -96,6 +96,8 @@ The script evaluates the models, refits on all eligible history, and forecasts t
 
 ## Opening the report
 
+**[Open the working demo](https://maouuuuuuuuu.github.io/Proyecto_Mineria_de_Datos/Demos/forecast_report.html)** — explore the saved report in your browser, without Python, SQL Server, or retraining. The demo is a static snapshot of historical evaluation and forecasts after the dataset cutoff.
+
 The script creates these outputs beside itself:
 
 ```text
