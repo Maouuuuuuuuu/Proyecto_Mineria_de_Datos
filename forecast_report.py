@@ -400,7 +400,7 @@ HTML = r'''<!doctype html>
 :root{--ink:#e4eaf4;--muted:#99a6ba;--line:#293241;--teal:#6ad4b9;--bg:#10141c;--card:#171d28;color-scheme:dark}
 body{font-size:14px;background:var(--bg)}.shell{max-width:1240px;padding:32px 28px}.tabs{background:transparent;padding:0;border-bottom:1px solid var(--line);border-radius:0;width:100%;gap:28px;margin-bottom:30px}.tab{padding:12px 0 16px;border-radius:0;color:var(--muted);font-size:15px}.tab[aria-selected=true]{background:transparent;color:var(--ink);box-shadow:none;border-bottom:2px solid var(--teal)}.tab small{display:none}.section-head{margin-bottom:20px}h2{font-size:24px;font-weight:600}h3{font-size:16px;font-weight:600}.filters{background:transparent;border:0;padding:0;gap:20px;margin-bottom:24px}select{background:#1b2330;border:1px solid #364155;color:var(--ink);border-radius:7px;padding:10px 32px 10px 12px}.cards{gap:0;border:1px solid var(--line);border-radius:10px;background:var(--card);margin-bottom:28px}.card{background:transparent;border:0;border-radius:0;padding:22px 26px}.card+.card{border-left:1px solid var(--line)}.big{font-size:26px;font-weight:600}.eyebrow{font-size:10px;letter-spacing:.08em}.panel{background:var(--card);border-color:var(--line);padding:24px;border-radius:10px;margin-bottom:26px}.grid{gap:24px;grid-template-columns:1fr 1.15fr}.chart{min-height:0;margin-top:24px}.metric-row{margin:0 0 22px}.metric-row:last-child{margin-bottom:6px}.metric-line{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:9px;font-size:13px}.metric-line strong{font-variant-numeric:tabular-nums;font-weight:600}.track{height:7px;background:#242d3c;border-radius:8px;overflow:hidden}.track>div{height:100%;border-radius:8px}.best-tag{font-size:10px;color:var(--teal);margin-left:9px;font-weight:400}.table-wrap{margin-top:14px}th{padding:12px 10px;font-size:10px}td{padding:17px 10px;border-color:var(--line)}.section-divider{border-top:0;padding-top:8px}.selected-name{color:var(--muted);font-weight:400}.empty{background:#1b2330}.legend{gap:22px}.dot{width:8px;height:8px}.sub:empty{display:none}#snapshot,#evaluationNotice,#futureNotice,#scoreNote,#metricHelp,#diagnostics,#futureDiagnostics,#actualDetail{display:none!important}details pre{background:#1b2330}summary{color:var(--muted);font-weight:400}.notice{background:#242b37;color:#d5dfed;border-color:#8995ab}
 @media(max-width:850px){.grid{grid-template-columns:1fr}.shell{padding:24px 18px}.tabs{gap:22px}.card{padding:18px}.big{font-size:22px}}@media(max-width:540px){.cards{grid-template-columns:1fr}.card+.card{border-left:0;border-top:1px solid var(--line)}.tabs{gap:12px}.tab{font-size:13px}.panel{padding:18px}.metric-line{font-size:12px}.best-tag{display:none}}
-#evaluationNotice,#futureNotice{display:block!important} .notice{font-size:12px;padding:9px 12px;margin-bottom:18px} </style></head>
+#evaluationNotice,#futureNotice{display:block!important} .notice{font-size:12px;padding:9px 12px;margin-bottom:18px} .demand-pie{display:grid;grid-template-columns:minmax(220px,360px) 1fr;align-items:center;gap:36px}.demand-pie .metric-line{margin-bottom:16px}.demand-pie .metric-line span{overflow-wrap:anywhere}@media(max-width:650px){.demand-pie{grid-template-columns:1fr;gap:16px}.demand-pie>div:first-child{max-width:320px;width:100%;margin:auto}} .demand-donut{overflow-x:auto}.demand-donut svg{min-width:760px}.demand-slice{transition:filter .15s}.demand-slice:hover{filter:brightness(1.12)} </style></head>
 <body>
 <main class="shell">
 <nav class="tabs" role="tablist" aria-label="Analysis scope">
@@ -414,11 +414,12 @@ body{font-size:14px;background:var(--bg)}.shell{max-width:1240px;padding:32px 28
 <div class="cards" aria-live="polite"><div class="card"><div class="eyebrow">Lowest average error</div><div class="big" id="bestModel">—</div><p id="bestDetail"></p></div><div class="card"><div class="eyebrow" id="totalLabel">Actual sales</div><div class="big" id="actualTotal">—</div><p id="actualDetail"></p></div><div class="card"><div class="eyebrow">Evaluation window</div><div class="big" id="periodLabel">—</div><p id="periodDetail"></p></div></div>
 <div class="grid"><section class="panel"><div class="panel-top"><div><h3>Forecast error</h3><p class="sub">Lower is better</p></div><label aria-label="Error metric"><select id="metricSelect"><option value="mae">MAE</option><option value="rmse">RMSE</option><option value="wape">WAPE</option></select></label></div><div class="chart" id="metricChart"></div><p class="sub" id="metricHelp"></p></section>
 <section class="panel"><h3>Model comparison</h3><p class="sub"></p><div class="table-wrap" id="scoreTable"></div><div class="note" id="scoreNote"></div><details id="diagnostics"><summary>Fit diagnostics</summary><pre id="diagnosticText"></pre></details></section></div>
-<section class="panel"><h3>Actual vs predicted</h3><p class="sub" id="evaluationCaption"></p><div class="legend" id="evaluationLegend"></div><div class="chart" id="evaluationChart"></div></section>
+<section class="panel"><h3>Actual vs predicted</h3><p class="sub" id="evaluationCaption"></p><div class="legend" id="evaluationLegend"></div><div class="chart" id="evaluationChart"></div><details><summary>View weekly evaluation values</summary><div class="table-wrap" id="evaluationTable"></div></details></section>
 <section class="panel"><h3>Prophet uncertainty</h3><p class="sub" id="uncertaintyCaption"></p><div class="legend" id="uncertaintyLegend"></div><div class="chart" id="uncertaintyChart"></div><p class="sub" id="uncertaintySummary" aria-live="polite"></p></section>
 <div class="section-head section-divider"><div><h2>Next 4 weeks</h2><p class="sub"></p></div><label id="futureField">FUTURE FORECAST RUN<select id="futureSelect"></select></label></div>
 <div id="futureNotice"></div><section class="panel"><p class="selected-name" id="futureCaption"></p><div class="legend" id="futureLegend"></div><div class="chart" id="futureChart"></div><div class="table-wrap" id="futureTable"></div><details id="futureDiagnostics"><summary>Future fit diagnostics</summary><pre id="futureDiagnosticText"></pre></details></section>
 </div>
+<section class="panel hidden" id="categoryDemandPanel"><div class="panel-top"><div><h3>Top 10 categories by expected demand</h3><p class="sub" id="categoryDemandCaption"></p></div><label>MODEL<select id="categoryDemandModel"><option>Prophet</option><option>RF</option></select></label></div><div id="categoryDemandNotice"></div><div class="chart" id="categoryDemandChart"></div><details><summary>View weekly category forecasts</summary><div class="table-wrap" id="categoryDemandTable"></div></details></section>
 <div hidden id="sources"></div>
 </main>
 <script id="report-data" type="application/json">__REPORT_DATA__</script>
@@ -482,7 +483,7 @@ function valuesTable(id,dates,series){if(!dates.length){empty(id,'No weekly valu
 function renderEvaluation(){
  const rows=groupRows(bundle().metrics).filter(r=>evalKey(r)===$('evaluationSelect').value), ref=rows[0];
  $('totalLabel').textContent=isUnits()?'Total test units':'Total test sales';
- if(!ref){renderUncertainty([],[],isUnits()?'actual_units':'actual_sales',isUnits()?'predicted_units':'predicted_sales');['bestModel','actualTotal','periodLabel'].forEach(id=>$(id).textContent='—');['bestDetail','actualDetail','periodDetail','evaluationCaption','scoreNote'].forEach(id=>$(id).textContent='');['metricChart','scoreTable','evaluationChart'].forEach(id=>empty(id,'No evaluation data found.'));$('evaluationLegend').innerHTML='';$('diagnostics').classList.add('hidden');note('evaluationNotice','');return}
+ if(!ref){renderUncertainty([],[],isUnits()?'actual_units':'actual_sales',isUnits()?'predicted_units':'predicted_sales');['bestModel','actualTotal','periodLabel'].forEach(id=>$(id).textContent='—');['bestDetail','actualDetail','periodDetail','evaluationCaption','scoreNote'].forEach(id=>$(id).textContent='');['metricChart','scoreTable','evaluationChart','evaluationTable'].forEach(id=>empty(id,'No evaluation data found.'));$('evaluationLegend').innerHTML='';$('diagnostics').classList.add('hidden');note('evaluationNotice','');return}
  const mf=isUnits()?'mae_units':'mae_brl',rf=isUnits()?'rmse_units':'rmse_brl',tf=isUnits()?'actual_units_total':'actual_sales_total';
  const valid=rows.filter(r=>r.status==='ok'&&finite(r[mf])).sort((a,b)=>a[mf]-b[mf]);
  const winner=valid[0],ties=winner?valid.filter(r=>Math.abs(r[mf]-winner[mf])<=1e-8*Math.max(1,Math.abs(winner[mf]))):[];
@@ -505,7 +506,7 @@ function renderEvaluation(){
  const series=[{name:'Actual',values:dates.map(d=>pred.find(r=>r.week_start===d)?.[af]??null)},...unique(pred.map(r=>r.model)).map(name=>({name,values:dates.map(d=>pred.find(r=>r.week_start===d&&r.model===name)?.[pf]??null)}))];
  $('evaluationCaption').textContent=`${date(ref.test_start)} – ${date(ref.test_end)} · ${ref.horizon_weeks}-week walk-forward · ${isUnits()?'Units':'BRL'}`;
  renderUncertainty(pred,dates,af,pf);
- legend('evaluationLegend',series.map(s=>s.name));lineChart('evaluationChart',dates,series);
+ legend('evaluationLegend',series.map(s=>s.name));lineChart('evaluationChart',dates,series);valuesTable('evaluationTable',dates,series);
 }
 function renderUncertainty(pred,dates,af,pf){
  const rows=pred.filter(r=>r.model==='Prophet'), lookup=new Map(rows.map(r=>[r.week_start,r]));
@@ -533,12 +534,69 @@ function renderFuture(){
  note('futureNotice',message);legend('futureLegend',names);lineChart('futureChart',dates,series,true);valuesTable('futureTable',dates,series);
  const msgs=unique(rows.filter(r=>r.message||r.status!=='ok').map(r=>`${r.model}: ${r.message||r.status}`));$('futureDiagnostics').classList.toggle('hidden',!msgs.length);$('futureDiagnosticText').textContent=msgs.join('\n\n');
 }
+function renderCategoryDemand(){
+ $('categoryDemandPanel').classList.toggle('hidden',state.scope!=='region');
+ if(state.scope!=='region')return;
+ const region=$('regionSelect').value,model=$('categoryDemandModel').value;
+ const regional=groupRows(bundle().future).filter(r=>futureKey(r)===$('futureSelect').value);
+ const ref=regional[0],dates=unique(regional.map(r=>r.week_start));
+ const clear=text=>{empty('categoryDemandChart',text);$('categoryDemandTable').innerHTML='';$('categoryDemandCaption').textContent='';note('categoryDemandNotice','')};
+ if(!ref||dates.length!==ref.forecast_weeks){clear('No complete forecast horizon available.');return}
+ const rows=DATA.scopes.category.future.filter(r=>r.region===region&&r.model===model&&futureKey(r)===futureKey(ref));
+ const categories=unique([...DATA.scopes.category.metrics,...DATA.scopes.category.future].filter(r=>r.region===region).map(r=>r.category));
+ const ranked=[];
+ for(const category of categories){
+  const part=rows.filter(r=>r.category===category);
+  const weekly=dates.map(d=>part.filter(r=>r.week_start===d));
+  if(!weekly.every(a=>a.length===1&&a[0].status==='ok'&&finite(a[0].predicted_units)&&a[0].predicted_units>=0))continue;
+  const values=weekly.map(a=>a[0].predicted_units);
+  ranked.push({category,values,total:values.reduce((a,b)=>a+b,0)});
+ }
+ ranked.sort((a,b)=>b.total-a.total||a.category.localeCompare(b.category));
+ const top=ranked.slice(0,10),excluded=categories.length-ranked.length;
+ $('categoryDemandCaption').textContent=`${region} · ${model} · ${date(dates[0])} – ${date(dates.at(-1))} · Ranked by total expected units over ${dates.length} weeks`;
+ note('categoryDemandNotice',(excluded?`${excluded} categories excluded because a valid forecast was unavailable for one or more weeks. `:'')+(DATA.sample?'Sample report: ranking covers only the included categories.':''));
+ if(!top.length){empty('categoryDemandChart','No categories have complete forecasts for this model and horizon.');$('categoryDemandTable').innerHTML='';return}
+ const total=top.reduce((sum,r)=>sum+r.total,0);
+ if(total<=0){empty('categoryDemandChart','All selected category forecasts are zero; no demand shares to display.')}else{
+  const palette=['#6ad4b9','#85aaff','#e5ad68','#b69aed','#ef8e9e','#80c9e0','#c8cf7d','#f2bdcc','#8cbf98','#d69b79'];
+  const cx=550,cy=370,radius=190,labels=[];
+  const point=(a,r)=>[cx+r*Math.cos(a),cy+r*Math.sin(a)];
+  let angle=-Math.PI/2;
+  let svg='<svg viewBox="0 0 1100 740" role="img" aria-label="Top ten categories with forecast unit totals connected to their slices"><defs><filter id="pieShadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-opacity="0.22"/></filter></defs><g filter="url(#pieShadow)">';
+  top.forEach((r,i)=>{
+   const share=r.total/total,end=angle+share*2*Math.PI,mid=(angle+end)/2;
+   const start=point(angle,radius),finish=point(end,radius);
+   const title=esc(pretty(r.category))+': '+num(r.total)+' forecast units';
+   if(share>=1-1e-12)svg+=`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${palette[i]}"><title>${title}</title></circle>`;
+   else if(share>0)svg+=`<path class="demand-slice" d="M${cx},${cy} L${start} A${radius},${radius} 0 ${share>0.5?1:0},1 ${finish} Z" fill="${palette[i]}" stroke="#171d28" stroke-width="3"><title>${title}</title></path>`;
+   if(share>0)labels.push({r,i,share,mid,side:Math.cos(mid)>=0?1:-1,y:cy+Math.sin(mid)*210});
+   angle=end;
+  });
+  svg+=`</g><circle cx="${cx}" cy="${cy}" r="103" fill="#171d28"/><circle cx="${cx}" cy="${cy}" r="98" fill="none" stroke="#293241"/>`;
+  for(const side of [-1,1]){
+   const group=labels.filter(l=>l.side===side).sort((a,b)=>a.y-b.y);
+   group.forEach((l,i)=>l.y=Math.max(l.y,50,i?group[i-1].y+64:50));
+   if(group.length&&group.at(-1).y>665){group.at(-1).y=665;for(let i=group.length-2;i>=0;i--)group[i].y=Math.min(group[i].y,group[i+1].y-64)}
+  }
+  labels.forEach(l=>{
+   const start=point(l.mid,radius+4),bend=point(l.mid,radius+23),endX=l.side===1?790:310,textX=endX+l.side*12,anchor=l.side===1?'start':'end';
+   const words=pretty(l.r.category).split(' '),lines=[''];
+   for(const word of words){if((lines.at(-1)+' '+word).trim().length>29&&lines.at(-1))lines.push(word);else lines[lines.length-1]=(lines.at(-1)+' '+word).trim()}
+   svg+=`<polyline points="${start} ${bend} ${endX-l.side*12},${l.y} ${endX},${l.y}" fill="none" stroke="${palette[l.i]}" stroke-opacity="0.7" stroke-width="1.5"/><circle cx="${start[0]}" cy="${start[1]}" r="3" fill="${palette[l.i]}"/><text x="${textX}" y="${l.y-8}" text-anchor="${anchor}" font-size="15" fill="#e4eaf4">${lines.map((line,j)=>`<tspan x="${textX}" dy="${j?18:0}">${esc(line)}</tspan>`).join('')}<tspan x="${textX}" dy="23" fill="${palette[l.i]}" font-weight="600" font-size="17">${num(l.r.total)} units</tspan></text>`;
+  });
+  svg+='</svg>';
+  $('categoryDemandChart').innerHTML=`<div class="demand-donut">${svg}</div><p class="sub" style="text-align:center">Total predicted units over the forecast horizon. Slice sizes compare these top ten categories only.</p>`;
+
+ }
+ $('categoryDemandTable').innerHTML=`<table><thead><tr><th>Category</th>${dates.map(d=>`<th class="num">${esc(shortDate(d))}</th>`).join('')}<th class="num">Total units</th></tr></thead><tbody>${top.map(r=>`<tr><td>${esc(pretty(r.category))}</td>${r.values.map(v=>`<td class="num">${num(v)}</td>`).join('')}<td class="num"><strong>${num(r.total)}</strong></td></tr>`).join('')}</tbody></table>`;
+}
 function render(){
  const titles={global:['Global sales','All regions and product categories · sales value in BRL'],region:['Regional sales',$('regionSelect').value+' · all product categories · sales value in BRL'],category:['Category demand',$('regionSelect').value+' / '+pretty($('categorySelect').value)+' · delivered units']};
- $('scopeTitle').textContent=titles[state.scope][0];$('scopeSubtitle').textContent=titles[state.scope][1];renderEvaluation();renderFuture();
+ $('scopeTitle').textContent=titles[state.scope][0];$('scopeSubtitle').textContent=titles[state.scope][1];renderEvaluation();renderFuture();renderCategoryDemand();
 }
 document.querySelectorAll('[data-scope]').forEach((button,index,buttons)=>{button.onclick=()=>{state.scope=button.dataset.scope;buttons.forEach(b=>{const active=b===button;b.setAttribute('aria-selected',active);b.tabIndex=active?0:-1});$('analysis').setAttribute('aria-labelledby',button.id);updateFilters()};button.onkeydown=e=>{if(['ArrowRight','ArrowLeft','Home','End'].includes(e.key)){e.preventDefault();let i=e.key==='Home'?0:e.key==='End'?buttons.length-1:(index+(e.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;buttons[i].click();buttons[i].focus()}}});
-$('regionSelect').onchange=updateCategories;$('categorySelect').onchange=updateRuns;$('evaluationSelect').onchange=renderEvaluation;$('futureSelect').onchange=renderFuture;$('metricSelect').onchange=renderEvaluation;
+$('regionSelect').onchange=updateCategories;$('categorySelect').onchange=updateRuns;$('evaluationSelect').onchange=renderEvaluation;$('futureSelect').onchange=()=>{renderFuture();renderCategoryDemand()};$('categoryDemandModel').onchange=renderCategoryDemand;$('metricSelect').onchange=renderEvaluation;
 $('snapshot').textContent='Built '+new Date(DATA.generated).toLocaleString();note('loadWarnings',DATA.warnings.join(' '));
 $('sources').innerHTML=`<table><thead><tr><th>CSV snapshot</th><th class="num">Rows</th><th>Last modified</th></tr></thead><tbody>${DATA.sources.map(s=>`<tr><td>${esc(s.name)}</td><td class="num">${s.rows.toLocaleString()}</td><td>${esc(new Date(s.modified).toLocaleString())}</td></tr>`).join('')}</tbody></table>`;
 updateFilters();
